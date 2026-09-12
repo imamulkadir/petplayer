@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>PetPlayer</RootNamespace>
+    <AssemblyName>PetPlayer</AssemblyName>
+    <ApplicationIcon>Resources\PetPlayer.ico</ApplicationIcon>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+
+    <AssemblyTitle>Pet Player</AssemblyTitle>
+    <Product>Pet Player</Product>
+    <AssemblyName>PetPlayer</AssemblyName>
+    <Company>Pet Player</Company>
+    <Description>Pet Player - lightweight keyboard-first video player</Description>
+    <Version>1.0.0.0</Version>
+    <FileVersion>1.0.0.0</FileVersion>
+
+    <!-- Never require admin elevation. -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LibVLCSharp" Version="3.9.0" />
+    <PackageReference Include="LibVLCSharp.WPF" Version="3.9.0" />
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.21" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\PetPlayer.ico" />
+  </ItemGroup>
+
+</Project>

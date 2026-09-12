@@ -1,0 +1,73 @@
+<UserControl x:Class="PetPlayer.Views.TranscriptPanelView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:helpers="clr-namespace:PetPlayer.Helpers"
+             xmlns:models="clr-namespace:PetPlayer.Models"
+             MinWidth="260">
+    <UserControl.Resources>
+        <helpers:TranscriptActiveConverter x:Key="TranscriptActiveConverter" />
+        <helpers:TranscriptTimestampConverter x:Key="TranscriptTimestampConverter" />
+        <helpers:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
+    </UserControl.Resources>
+
+    <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Margin="12,10,8,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Transcript" Foreground="{StaticResource TextPrimaryBrush}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Content="&#xE711;" FontFamily="Segoe MDL2 Assets" Style="{StaticResource IconButtonStyle}"
+                        Focusable="False" Click="CloseButton_Click" ToolTip="Hide transcript panel" />
+            </Grid>
+
+            <TextBlock Grid.Row="1" Text="No transcript loaded yet. Load a subtitle file to see it here."
+                       Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="14,4"
+                       Visibility="{Binding TranscriptEntries.Count, Converter={StaticResource CountToVisibilityConverter}}" />
+
+            <ListBox x:Name="TranscriptList" Grid.Row="1" Background="Transparent" BorderThickness="0"
+                     ItemsSource="{Binding TranscriptEntries}"
+                     SelectionChanged="TranscriptList_SelectionChanged"
+                     ScrollViewer.ScrollChanged="TranscriptScrollViewer_ScrollChanged"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Padding" Value="10,6" />
+                        <Setter Property="Cursor" Value="Hand" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{StaticResource HoverBrush}" />
+                            </Trigger>
+                            <DataTrigger Value="True">
+                                <DataTrigger.Binding>
+                                    <MultiBinding Converter="{StaticResource TranscriptActiveConverter}">
+                                        <Binding Path="." />
+                                        <Binding Path="DataContext.ActiveTranscriptEntry" RelativeSource="{RelativeSource AncestorType=ListBox}" />
+                                    </MultiBinding>
+                                </DataTrigger.Binding>
+                                <Setter Property="Background" Value="{StaticResource HoverBrush}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="{x:Type models:TranscriptEntry}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Start, Converter={StaticResource TranscriptTimestampConverter}}"
+                                       Foreground="{StaticResource AccentBrush}" FontSize="11" FontFamily="Consolas" />
+                            <TextBlock Text="{Binding Text}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
+                                       TextWrapping="Wrap" Margin="0,2,0,0" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+    </Border>
+</UserControl>

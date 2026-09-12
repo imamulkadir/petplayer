@@ -1,0 +1,288 @@
+<Window x:Class="PetPlayer.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:lib="clr-namespace:LibVLCSharp.WPF;assembly=LibVLCSharp.WPF"
+        xmlns:views="clr-namespace:PetPlayer.Views"
+        xmlns:helpers="clr-namespace:PetPlayer.Helpers"
+        Title="Pet Player"
+        Icon="pack://application:,,,/Resources/PetPlayer.ico"
+        Background="{StaticResource AppBackgroundBrush}"
+        WindowStyle="None"
+        ResizeMode="CanResizeWithGrip"
+        MinWidth="480" MinHeight="320"
+        AllowDrop="True"
+        DragEnter="Window_DragEnter"
+        Drop="Window_Drop"
+        PreviewKeyDown="Window_PreviewKeyDown"
+        MouseMove="Window_MouseMove">
+
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <helpers:PlayPauseGlyphConverter x:Key="PlayPauseGlyphConverter" />
+        <helpers:MuteGlyphConverter x:Key="MuteGlyphConverter" />
+        <helpers:InverseBooleanConverter x:Key="InverseBool" />
+        <helpers:FilePathToFileNameConverter x:Key="FilePathToFileName" />
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <Grid Grid.Column="0" Background="Black">
+            <!--
+                Everything the user should see/click on top of the video must live
+                INSIDE VideoView's content (not as a sibling in this Grid). LibVLC
+                renders video through a native child window that always paints
+                above ordinary WPF siblings ("airspace"); LibVLCSharp.WPF's
+                VideoView is a ContentControl that gets around this by hosting its
+                Content in a separate floating overlay window kept in sync with
+                the video's position/size, which is the only place WPF content
+                remains visible and mouse-clickable above the video.
+            -->
+            <lib:VideoView x:Name="VideoViewControl"
+                           HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+                <!--
+                    Background must be a non-zero alpha (NOT Colors.Transparent/alpha=0).
+                    VideoView's overlay content is hosted in a layered window
+                    (AllowsTransparency="True"), and Windows hit-tests layered
+                    windows per-pixel by alpha: a fully alpha=0 pixel is treated
+                    as "not part of the window", so mouse input falls through to
+                    the video underneath instead of reaching this Grid. An
+                    imperceptible alpha of 1 keeps every pixel hit-testable (so
+                    hovering anywhere over the video - including where the
+                    control bar is currently hidden - reaches MouseMove below)
+                    while remaining visually invisible.
+                -->
+                <Grid Background="#01000000"
+                      MouseMove="VideoArea_MouseMove"
+                      MouseLeftButtonDown="VideoArea_MouseLeftButtonDown"
+                      PreviewMouseUp="VideoArea_MouseUp"
+                      MouseWheel="VideoArea_MouseWheel">
+                    <!--
+                        Attached directly here (rather than Window.ContextMenu) because
+                        this Grid lives inside VideoView's own separate top-level overlay
+                        window (see the comment above on VideoViewControl's content) - a
+                        Window-level ContextMenu never sees right-clicks that land there,
+                        so it silently did nothing.
+                    -->
+                    <Grid.ContextMenu>
+                        <ContextMenu x:Name="RootContextMenu"
+                                     DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
+                                     Opened="RootContextMenu_Opened">
+                            <MenuItem Header="Play / Pause" InputGestureText="Space" Command="{Binding PlayPauseCommand}" IsEnabled="{Binding HasMedia}" />
+                            <MenuItem x:Name="SeekBackwardMenuItem" InputGestureText="Left" Command="{Binding SeekBackwardCommand}" IsEnabled="{Binding HasMedia}" />
+                            <MenuItem x:Name="SeekForwardMenuItem" InputGestureText="Right" Command="{Binding SeekForwardCommand}" IsEnabled="{Binding HasMedia}" />
+                            <Separator />
+                            <MenuItem x:Name="PlaybackSpeedMenuItem" Header="Playback Speed" IsEnabled="{Binding HasMedia}" />
+                            <Separator />
+                            <MenuItem x:Name="AudioTrackMenuItem" Header="Audio Track" IsEnabled="{Binding HasMedia}" />
+                            <MenuItem x:Name="SubtitleMenuItem" Header="Subtitles" IsEnabled="{Binding HasMedia}" />
+                            <Separator />
+                            <MenuItem x:Name="FullscreenMenuItem" Header="Fullscreen" InputGestureText="F" IsCheckable="True" Command="{Binding ToggleFullscreenCommand}" />
+                            <MenuItem x:Name="AlwaysOnTopMenuItem" Header="Always on Top" InputGestureText="T" IsCheckable="True" Command="{Binding ToggleAlwaysOnTopCommand}" />
+                            <MenuItem x:Name="ShowTranscriptMenuItem" Header="Show Transcript" IsCheckable="True" Command="{Binding ToggleTranscriptPanelCommand}" />
+                            <Separator />
+                            <MenuItem Header="Open File..." InputGestureText="Ctrl+O" Click="OpenMediaMenuItem_Click" />
+                            <MenuItem Header="Open File Location" Command="{Binding OpenFileLocationCommand}" IsEnabled="{Binding HasMedia}" />
+                            <MenuItem Header="Copy File Path" Click="CopyFilePathMenuItem_Click" IsEnabled="{Binding HasMedia}" />
+                            <Separator />
+                            <MenuItem Header="Media Information" Click="MediaInformationMenuItem_Click" IsEnabled="{Binding HasMedia}" />
+                            <Separator />
+                            <MenuItem Header="Settings" Command="{Binding OpenSettingsCommand}" />
+                        </ContextMenu>
+                    </Grid.ContextMenu>
+
+                    <!-- Placeholder hint shown until a video is opened -->
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasMedia}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding HasMedia}" Value="False">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="Pet Player" Foreground="{StaticResource TextSecondaryBrush}" FontSize="22" HorizontalAlignment="Center" />
+                        <TextBlock Text="Ctrl+O to open a video, or drag one in" Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="13" Margin="0,6,0,0" HorizontalAlignment="Center" Opacity="0.7" />
+                    </StackPanel>
+
+                    <!--
+                        Letterbox/pillarbox masks: LibVLC's Direct3D11 video output only ever
+                        paints the actual video content rect - the padding around it (when the
+                        video's aspect ratio doesn't match the window's) keeps whatever color
+                        that surface happened to initialize with, which is a flat light gray in
+                        this LibVLC build, not black - and neither a GDI class-background fix
+                        nor forcing a different vout module reaches it, since that's
+                        Direct3D11's own render target, entirely bypassing GDI painting. These
+                        four bars are
+                        sized in code-behind (see UpdateLetterboxMask in MainWindow.xaml.cs) to
+                        exactly cover whatever padding exists around the real video rect, so the
+                        area outside the video is always solid black regardless of what LibVLC
+                        itself renders there underneath.
+                    -->
+                    <Border x:Name="LetterboxMaskTop" Background="Black" VerticalAlignment="Top" Height="0" IsHitTestVisible="False" />
+                    <Border x:Name="LetterboxMaskBottom" Background="Black" VerticalAlignment="Bottom" Height="0" IsHitTestVisible="False" />
+                    <Border x:Name="LetterboxMaskLeft" Background="Black" HorizontalAlignment="Left" Width="0" IsHitTestVisible="False" />
+                    <Border x:Name="LetterboxMaskRight" Background="Black" HorizontalAlignment="Right" Width="0" IsHitTestVisible="False" />
+
+                    <!-- Top title bar: player logo + currently-playing file name on the left,
+                         window chrome buttons on the right. Visible on hover, hidden the rest
+                         of the time (same IsControlsVisible binding as the bottom control bar). -->
+                    <Border HorizontalAlignment="Stretch" VerticalAlignment="Top" Background="{StaticResource OverlaySurfaceBrush}"
+                            Visibility="{Binding IsControlsVisible, Converter={StaticResource BoolToVis}}"
+                            MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
+                                <Image Source="pack://application:,,,/Resources/PetPlayer.ico" Width="16" Height="16" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding CurrentFilePath, Converter={StaticResource FilePathToFileName}}"
+                                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" VerticalAlignment="Center"
+                                           Margin="8,0,0,0" MaxWidth="420" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                <Button Content="&#xE921;" Style="{StaticResource ChromeButtonStyle}" Click="MinimizeButton_Click" Focusable="False" ToolTip="Minimize" />
+                                <Button Content="&#xE922;" Style="{StaticResource ChromeButtonStyle}" Click="MaximizeRestoreButton_Click" Focusable="False" ToolTip="Maximize / Restore" />
+                                <Button Content="&#xE8BB;" Style="{StaticResource ChromeButtonStyle}" Click="CloseButton_Click" Focusable="False" ToolTip="Close" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- On-screen feedback overlay (volume/seek/speed/subtitle toggle, etc.) -->
+                    <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16,0,0,72" Background="{StaticResource OverlaySurfaceBrush}"
+                            CornerRadius="4" Padding="10,5" Opacity="0" IsHitTestVisible="False">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Opacity" Value="0" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsOverlayVisible}" Value="True">
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.08" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                        <DataTrigger.ExitActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.3" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.ExitActions>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Text="{Binding OverlayText}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12" FontWeight="SemiBold" />
+                    </Border>
+
+                    <!-- Bottom translucent control bar -->
+                    <Border VerticalAlignment="Bottom" Background="{StaticResource OverlaySurfaceBrush}"
+                            Visibility="{Binding IsControlsVisible, Converter={StaticResource BoolToVis}}">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasMedia}" Value="False">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <Grid Margin="14,6,14,10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!--
+                                IsMoveToPointEnabled is deliberately overridden off here: WPF's
+                                built-in click-to-jump on Track is what caused seeking to be
+                                flaky and effectively forward-only (its jump logic runs on the
+                                bubbling MouseLeftButtonDown, after our own Preview handler, and
+                                can re-clobber the value with its own inconsistent calculation).
+                                The three Preview handlers below compute the seek position
+                                directly from the pointer's X coordinate instead, which is
+                                reliable in both directions.
+                            -->
+                            <Slider x:Name="SeekSlider" Grid.Row="0" Style="{StaticResource ControlBarSliderStyle}"
+                                    Minimum="0" Maximum="{Binding SeekBarMaximumMs}" Value="{Binding SeekBarValueMs, Mode=OneWay}"
+                                    Focusable="False" IsMoveToPointEnabled="False"
+                                    PreviewMouseLeftButtonDown="SeekSlider_PreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="SeekSlider_PreviewMouseMove"
+                                    PreviewMouseLeftButtonUp="SeekSlider_PreviewMouseLeftButtonUp" />
+
+                            <Grid Grid.Row="1" Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Button Grid.Column="0" Style="{StaticResource IconButtonStyle}" Focusable="False"
+                                        Command="{Binding PlayPauseCommand}" ToolTip="Play / Pause (Space)">
+                                    <TextBlock Text="{Binding IsPlaying, Converter={StaticResource PlayPauseGlyphConverter}}"
+                                               FontFamily="Segoe MDL2 Assets" FontSize="14" />
+                                </Button>
+
+                                <TextBlock Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0"
+                                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="12">
+                                    <Run Text="{Binding PositionText, Mode=OneWay}" />
+                                    <Run Text=" / " />
+                                    <Run Text="{Binding DurationText, Mode=OneWay}" />
+                                </TextBlock>
+
+                                <TextBlock Grid.Column="3" VerticalAlignment="Center" Margin="10,0" Foreground="{StaticResource TextSecondaryBrush}"
+                                           FontSize="12" Text="{Binding PlaybackSpeedText}" ToolTip="Playback speed ( [ and ] to change, \ to reset )" />
+
+                                <ToggleButton Grid.Column="4" Style="{StaticResource IconButtonStyle}" Focusable="False"
+                                              ToolTip="Transcript panel" IsChecked="{Binding IsTranscriptPanelVisible, Mode=TwoWay}">
+                                    <TextBlock Text="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="14" />
+                                </ToggleButton>
+
+                                <Button Grid.Column="5" Style="{StaticResource IconButtonStyle}" Focusable="False"
+                                        Command="{Binding ToggleMuteCommand}" ToolTip="Mute (M)">
+                                    <TextBlock Text="{Binding IsMuted, Converter={StaticResource MuteGlyphConverter}}"
+                                               FontFamily="Segoe MDL2 Assets" FontSize="14" />
+                                </Button>
+
+                                <Slider Grid.Column="6" Width="80" Minimum="0" Maximum="100" Focusable="False" VerticalAlignment="Center"
+                                         Style="{StaticResource ControlBarSliderStyle}" Value="{Binding Volume, Mode=TwoWay}" ToolTip="Volume (Up / Down arrows)" />
+
+                                <Button Grid.Column="7" Style="{StaticResource IconButtonStyle}" Focusable="False"
+                                        Command="{Binding ToggleFullscreenCommand}" ToolTip="Fullscreen (F)">
+                                    <TextBlock Text="&#xE740;" FontFamily="Segoe MDL2 Assets" FontSize="14" />
+                                </Button>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </lib:VideoView>
+        </Grid>
+
+        <views:TranscriptPanelView Grid.Column="1" Width="300"
+                                    Visibility="{Binding IsTranscriptPanelVisible, Converter={StaticResource BoolToVis}}" />
+    </Grid>
+</Window>
