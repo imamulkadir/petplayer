@@ -9,6 +9,7 @@ open video → watch → seek precisely → synchronize subtitles → optionally
 ## Features
 
 **Playback**
+
 - Plays common video/audio containers via LibVLC (MP4, MKV, AVI, MOV, WebM, and more)
 - Play/Pause, seek forward/backward (configurable interval, default 5s), frame-precise nudging (`Ctrl` + `←`/`→`), medium seeks (`Shift` + `←`/`→`), 10-second jumps (`J`/`L`)
 - Adjustable playback speed (0.25x–4x), with quick increase/decrease and a one-key reset to 1.0x
@@ -17,6 +18,7 @@ open video → watch → seek precisely → synchronize subtitles → optionally
 - Optional resume-from-last-position, capped to a bounded history
 
 **Window & video display**
+
 - Borderless, translucent window with a custom title bar (shows the currently playing file name) and an auto-hiding bottom control bar - both appear on mouse movement and hide again after a few seconds of inactivity during playback
 - True fullscreen (`F` or `Enter`) that covers the entire screen, taskbar included; separately, Maximize/Restore behaves like an ordinary window and correctly leaves the taskbar visible
 - The window can be resized by dragging any edge, even though the video surface visually covers the entire client area
@@ -24,22 +26,27 @@ open video → watch → seek precisely → synchronize subtitles → optionally
 - Always-on-top toggle
 
 **Subtitles**
+
 - Automatically loads a same-named subtitle file next to the video (can be turned off in Settings); external subtitle files can also be attached manually
 - Show/hide toggle, track selection, sync offset (±100 ms / ±500 ms, with reset), and vertical position nudging - all from the right-click menu
 - Renders as plain text with an outline for readability, with no background box behind it
 - Font size, vertical position, text opacity, and outline are configurable in Settings (take effect the next time Pet Player is started - see [Known v1 scope notes](#known-v1-scope-notes))
 
 **Audio & transcript**
+
 - Audio track selection, correctly reflecting whichever track is actually playing
 - Optional transcript panel, synced to subtitle timing, toggled from the control bar or right-click menu
 
 **Right-click context menu**
+
 - Play/Pause, seek backward/forward, playback speed, audio track, subtitles (with all sync/position actions), fullscreen, always-on-top, show transcript, open file / open file location / copy file path, media information, and settings - styled to match the native Windows context-menu look
 
 **Settings window**
+
 - Tabbed layout (General, Playback, Subtitles, Transcript, Windows, Shortcuts, About) covering seek interval, volume step, autoplay, resume playback, controls-hide delay, subtitle appearance, whether the transcript panel is visible by default, Windows "Open With" registration, and a full reference of every keyboard/mouse shortcut
 
 **Windows integration**
+
 - Optional, fully reversible registration in Explorer's right-click "Open with" menu - writes only to the per-user registry hive, no admin rights needed
 - Single-instance: opening another file (e.g. via "Open with", or a second launch) hands the path to the already-running window instead of opening a second copy
 - Runs with no installer and no admin rights required, straight from a plain folder copy
@@ -49,6 +56,7 @@ See [Keyboard shortcuts](#keyboard-shortcuts) below for the full list of key bin
 ## Requirements
 
 **To build:**
+
 - **Windows 10/11.** This project cannot be built or run on macOS/Linux - LibVLCSharp.WPF and the
   bundled LibVLC runtime are Windows-only.
 - **[.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)** - the SDK, not just the
@@ -66,9 +74,9 @@ machine you run it on.
 ## Quick start (first build after cloning)
 
 ```powershell
-git clone <this repository's URL>
+git clone https://github.com/imamulkadir/petplayer.git
 cd PetPlayer
-.\build\Build.ps1
+.\SetupAndBuild.cmd
 ```
 
 Then run `dist\PetPlayer\PetPlayer.exe`. There's nothing to configure beforehand - `Build.ps1`
@@ -89,6 +97,7 @@ for what to run every time you edit the code after that first build.
 ```
 PetPlayer/
 ├── PetPlayer.sln
+├── SetupAndBuild.cmd
 ├── PetPlayer/
 │   ├── PetPlayer.csproj
 │   ├── App.xaml / App.xaml.cs        Startup, single-instance handoff, global error handling
@@ -119,7 +128,7 @@ its own view model would just duplicate that state.
 **Every time you change code and want a new, runnable `.exe`:**
 
 ```powershell
-.\build\Build.ps1
+.\SetupAndBuild.cmd
 ```
 
 This is the one command to remember. It restores NuGet packages, builds in Release configuration,
@@ -145,7 +154,7 @@ the build output during development, not a standalone folder. Always use `.\buil
 
 `PetPlayer\bin\` and `PetPlayer\obj\` are build intermediates, safe to delete at any time (they're
 already excluded from version control via `.gitignore`) - the next build regenerates them from
-scratch. `dist\` is the actual shipped app and is *not* regenerated automatically; only a fresh
+scratch. `dist\` is the actual shipped app and is _not_ regenerated automatically; only a fresh
 `.\build\Build.ps1` run updates it.
 
 ## Deployment
@@ -155,11 +164,11 @@ drive, `%LOCALAPPDATA%\Programs`, ...) and run `PetPlayer.exe`.
 
 Two publish modes are available:
 
-| | Self-contained (default) | Framework-dependent |
-|---|---|---|
-| Target machine needs | Nothing | .NET 8 Desktop Runtime already installed |
-| Output size | ~356 MB | ~197 MB |
-| Command | `.\build\Build.ps1` | `.\build\Build.ps1 -FrameworkDependent` |
+|                      | Self-contained (default) | Framework-dependent                       |
+| -------------------- | ------------------------ | ----------------------------------------- |
+| Target machine needs | Nothing                  | .NET 8 Desktop Runtime already installed  |
+| Output size          | ~356 MB                  | ~197 MB                                   |
+| Command              | `.\SetupAndBuild.cmd`    | `.\SetupAndBuild.cmd -FrameworkDependent` |
 
 (Most of that size in both cases is the bundled LibVLC runtime and its decoder/demuxer plugins,
 not .NET itself - LibVLC is what makes the format-support requirement possible without a system
@@ -206,26 +215,26 @@ foreground, instead of opening a second window.
 
 ## Keyboard shortcuts
 
-| Key | Action |
-|---|---|
-| Space | Play / Pause |
-| ← / → | Seek backward / forward by the configured interval (default 5s) |
-| Shift + ← / → | Seek by 1 second |
-| Ctrl + ← / → | Seek by 0.25 seconds |
-| J / L | Seek 10 seconds backward / forward |
-| ↑ / ↓ | Volume up / down (default step 5%) |
-| Mouse scroll wheel (over video) | Volume up / down |
-| M | Mute / unmute |
-| [ / ] | Decrease / increase playback speed |
-| \ | Reset playback speed to 1.0x |
-| G / H | Subtitle 100 ms earlier / later |
-| Shift + G / H | Subtitle 500 ms earlier / later |
-| F or Enter | Toggle fullscreen (covers the entire screen, including the taskbar) |
-| Esc | Exit fullscreen |
-| Double-click video | Play / Pause |
-| T | Toggle Always on Top |
-| Ctrl + O | Open media file |
-| Right-click | Open the context menu (playback, tracks, subtitles, window, file actions) |
+| Key                             | Action                                                                    |
+| ------------------------------- | ------------------------------------------------------------------------- |
+| Space                           | Play / Pause                                                              |
+| ← / →                           | Seek backward / forward by the configured interval (default 5s)           |
+| Shift + ← / →                   | Seek by 1 second                                                          |
+| Ctrl + ← / →                    | Seek by 0.25 seconds                                                      |
+| J / L                           | Seek 10 seconds backward / forward                                        |
+| ↑ / ↓                           | Volume up / down (default step 5%)                                        |
+| Mouse scroll wheel (over video) | Volume up / down                                                          |
+| M                               | Mute / unmute                                                             |
+| [ / ]                           | Decrease / increase playback speed                                        |
+| \                               | Reset playback speed to 1.0x                                              |
+| G / H                           | Subtitle 100 ms earlier / later                                           |
+| Shift + G / H                   | Subtitle 500 ms earlier / later                                           |
+| F or Enter                      | Toggle fullscreen (covers the entire screen, including the taskbar)       |
+| Esc                             | Exit fullscreen                                                           |
+| Double-click video              | Play / Pause                                                              |
+| T                               | Toggle Always on Top                                                      |
+| Ctrl + O                        | Open media file                                                           |
+| Right-click                     | Open the context menu (playback, tracks, subtitles, window, file actions) |
 
 All shortcuts keep working after clicking the video, seek bar, volume slider or any other control -
 none of the control-bar elements take keyboard focus, so the window itself always handles playback
@@ -250,7 +259,7 @@ A few things called out as optional or "don't over-engineer" in the spec were ke
 simple:
 
 - **Automatic transcription**: `ITranscriptionService` defines the boundary (`video path → timestamped
-  transcript`) but has no implementation in v1. Wiring in Whisper / whisper.cpp / faster-whisper
+transcript`) but has no implementation in v1. Wiring in Whisper / whisper.cpp / faster-whisper
   later doesn't require touching the player, subtitle service, or any view model.
 - **Subtitle appearance** (font size, position, opacity, outline) is applied via LibVLC's freetype
   text-renderer options at startup rather than a custom rendering engine, per the spec's explicit
