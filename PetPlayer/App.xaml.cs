@@ -9,7 +9,6 @@ namespace PetPlayer;
 
 public partial class App : Application
 {
-    private SingleInstanceService? _singleInstanceService;
     private MediaPlayerService? _mediaPlayerService;
     private MainWindow? _mainWindow;
 
@@ -27,15 +26,11 @@ public partial class App : Application
 
         PathHelper.EnsureDataDirectoriesExist();
 
+        // Every launch runs as its own fully independent process/window - opening
+        // another video (a second "Open with", a double-click on another file, etc.)
+        // must never replace what's already playing in an existing window, so this
+        // deliberately does not gate on (or hand off to) any already-running instance.
         var requestedFilePath = e.Args.Length > 0 ? e.Args[0] : null;
-
-        _singleInstanceService = new SingleInstanceService();
-        if (!_singleInstanceService.TryAcquireOwnership())
-        {
-            SingleInstanceService.TrySendToRunningInstance(requestedFilePath);
-            Environment.Exit(0);
-            return;
-        }
 
         var settingsService = new SettingsService();
         var startupSettings = settingsService.Load();
@@ -58,13 +53,9 @@ public partial class App : Application
             return;
         }
 
-        // Everything from here on assumes we're the sole owner of the single-instance
-        // mutex. If any of it throws, we must not fall through to a state where the
-        // process keeps running invisibly while still holding that mutex - that would
-        // permanently block every future launch (including "Open with") behind a
-        // silent timeout. So this is wrapped explicitly rather than left to the global
-        // DispatcherUnhandledException handler, which only logs/shows a message and
-        // does not shut down.
+        // Wrapped explicitly (rather than left to the global DispatcherUnhandledException
+        // handler, which only logs/shows a message and does not shut down) so a failure
+        // here always results in a clean shutdown instead of an invisible running process.
         try
         {
             var subtitleService = new SubtitleService();
@@ -80,19 +71,6 @@ public partial class App : Application
 
             _mainWindow = new MainWindow(mainViewModel);
             MainWindow = _mainWindow;
-
-            _singleInstanceService.FileReceived += (_, path) =>
-            {
-                _mainWindow.Dispatcher.BeginInvoke(() =>
-                {
-                    _mainWindow.RestoreAndActivate();
-                    if (!string.IsNullOrWhiteSpace(path))
-                    {
-                        mainViewModel.OpenPath(path);
-                    }
-                });
-            };
-            _singleInstanceService.StartListening();
 
             _mainWindow.Show();
 
@@ -110,7 +88,6 @@ public partial class App : Application
                 "Pet Player", MessageBoxButton.OK, MessageBoxImage.Error);
 
             _mediaPlayerService?.Dispose();
-            _singleInstanceService?.Dispose();
             Shutdown(1);
         }
     }
@@ -166,7 +143,6 @@ public partial class App : Application
     {
         // MainWindow.Closing already persisted settings and disposed the view model.
         _mediaPlayerService?.Dispose();
-        _singleInstanceService?.Dispose();
 
         base.OnExit(e);
     }

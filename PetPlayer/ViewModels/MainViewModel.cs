@@ -71,7 +71,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         SeekIntervalSeconds = Settings.SeekIntervalSeconds;
         Volume = Settings.Volume;
         IsMuted = Settings.IsMuted;
-        PlaybackSpeed = Settings.PlaybackSpeed;
         IsAlwaysOnTop = Settings.AlwaysOnTop;
         IsTranscriptPanelVisible = Settings.TranscriptPanelVisible;
     }
@@ -92,7 +91,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private int _volume;
     [ObservableProperty] private bool _isMuted;
     [ObservableProperty] private double _seekIntervalSeconds;
-    [ObservableProperty] private double _playbackSpeed;
+    [ObservableProperty] private double _playbackSpeed = PlaybackConstants.DefaultPlaybackSpeed;
     [ObservableProperty] private string _playbackSpeedText = "1x";
 
     partial void OnPlaybackSpeedChanged(double value)
@@ -103,7 +102,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private bool _isFullscreen;
     [ObservableProperty] private bool _isAlwaysOnTop;
-    [ObservableProperty] private bool _isControlsVisible = true;
+    [ObservableProperty] private bool _isTitleBarVisible = true;
+    [ObservableProperty] private bool _isBottomBarVisible = true;
     [ObservableProperty] private bool _isTranscriptPanelVisible;
 
     [ObservableProperty] private string? _overlayText;
@@ -212,9 +212,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
             _mediaService.SetVolume(Volume);
             _mediaService.SetMute(IsMuted);
-            // PlaybackSpeed's own property-changed hook applies the rate for the
-            // life of a Media instance, but a freshly assigned Media resets the
-            // engine's rate, so it needs to be explicitly reapplied here too.
+            // Every newly opened video always starts at normal speed - a speed change
+            // during playback applies only to the media that's currently loaded and
+            // must never carry over to the next file. PlaybackSpeed's own
+            // OnPlaybackSpeedChanged hook applies the rate to the engine, but only
+            // fires when the value actually changes, and a freshly assigned Media
+            // resets the engine's own rate regardless - so SetRate is also called
+            // explicitly here to cover the case where the speed was already 1.0x.
+            PlaybackSpeed = PlaybackConstants.DefaultPlaybackSpeed;
             _mediaService.SetRate((float)PlaybackSpeed);
 
             TryAutoLoadMatchingSubtitle(path);
@@ -355,7 +360,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _dispatcher.BeginInvoke(() =>
         {
             IsPlaying = true;
-            IsControlsVisible = true;
+            IsTitleBarVisible = true;
+            IsBottomBarVisible = true;
             RefreshTracks();
         });
     }
@@ -365,7 +371,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _dispatcher.BeginInvoke(() =>
         {
             IsPlaying = false;
-            IsControlsVisible = true;
+            IsTitleBarVisible = true;
+            IsBottomBarVisible = true;
         });
     }
 
@@ -374,7 +381,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _dispatcher.BeginInvoke(() =>
         {
             IsPlaying = false;
-            IsControlsVisible = true;
+            IsTitleBarVisible = true;
+            IsBottomBarVisible = true;
             SaveResumePosition();
         });
     }
@@ -637,12 +645,23 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void Exit() => RequestExit?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>
+    /// In normal window mode the bars are always visible anyway, so this is a cheap
+    /// no-op there. In fullscreen, showing/hiding the bars is driven exclusively by
+    /// pointer proximity to the top/bottom edge (see MainWindow's
+    /// HandleFullscreenBarHover) - generic activity (keyboard shortcuts, mouse wheel,
+    /// etc.) must never force them visible there, or they'd never get a chance to
+    /// auto-hide again.
+    /// </summary>
     public void NotifyUserActivity()
     {
-        if (!IsControlsVisible)
+        if (IsFullscreen)
         {
-            IsControlsVisible = true;
+            return;
         }
+
+        IsTitleBarVisible = true;
+        IsBottomBarVisible = true;
     }
 
     private void ShowOverlay(string text)
@@ -652,6 +671,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _overlayTimer.Stop();
         _overlayTimer.Start();
     }
+
+    /// <summary>Reuses the same overlay/timeout used for volume, speed etc. status text.</summary>
+    public void ShowSizeOverlay(int width, int height) => ShowOverlay($"{width} × {height}");
 
     // ----- Lifecycle -----
 
@@ -686,7 +708,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Settings.SeekIntervalSeconds = SeekIntervalSeconds;
         Settings.Volume = Volume;
         Settings.IsMuted = IsMuted;
-        Settings.PlaybackSpeed = PlaybackSpeed;
         Settings.AlwaysOnTop = IsAlwaysOnTop;
         Settings.TranscriptPanelVisible = IsTranscriptPanelVisible;
 

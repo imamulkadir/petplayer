@@ -195,8 +195,23 @@ public sealed class MediaPlayerService : IDisposable
         return Math.Clamp(ms, 0, duration);
     }
 
-    public void SetVolume(int volumePercent) =>
-        Player.Volume = Math.Clamp(volumePercent, PlaybackConstants.MinVolumePercent, PlaybackConstants.MaxVolumePercent);
+    /// <summary>
+    /// LibVLC's own Volume property is a LINEAR amplitude multiplier (50% = half the
+    /// raw sample amplitude, roughly -6dB), but perceived loudness is closer to
+    /// logarithmic - a straight passthrough makes the lower half of the UI slider
+    /// sound much quieter than its position suggests (50% reads as "barely audible"
+    /// rather than a normal mid-level volume). Mapping the UI's linear 0-100% through
+    /// a square-root curve before handing it to LibVLC compensates for that (perceived
+    /// loudness roughly follows the square root of the amplitude ratio): 0% stays
+    /// silent, 100% stays at LibVLC's normal unboosted 100% (sqrt(1) = 1, so this can
+    /// never clip/distort), and everything in between gets noticeably more audible/
+    /// natural instead of disappearing into near-silence.
+    /// </summary>
+    public void SetVolume(int volumePercent)
+    {
+        var uiPercent = Math.Clamp(volumePercent, PlaybackConstants.MinVolumePercent, PlaybackConstants.MaxVolumePercent);
+        Player.Volume = (int)Math.Round(100.0 * Math.Sqrt(uiPercent / 100.0));
+    }
 
     public void SetMute(bool muted) => Player.Mute = muted;
 

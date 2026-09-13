@@ -140,11 +140,6 @@
                         <TextBlock Text="%" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
                     </StackPanel>
 
-                    <TextBlock Text="Controls hide after" Style="{StaticResource FieldLabelStyle}" />
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                        <TextBox Width="60" Text="{Binding ControlsHideDelaySeconds, UpdateSourceTrigger=PropertyChanged}" />
-                        <TextBlock Text="seconds" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
-                    </StackPanel>
                 </StackPanel>
             </TabItem>
 

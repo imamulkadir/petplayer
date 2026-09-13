@@ -30,8 +30,10 @@ public static class PlaybackConstants
 
     public const double SubtitlePositionStep = 0.05;
 
-    public const int ControlsHideDelayMs = 3000;
     public const int CursorHideDelayMs = 2000;
+
+    public const double FullscreenTopHoverZoneDips = 48;
+    public const double FullscreenBottomHoverZoneDips = 110;
 
     public const int OverlayFadeStartMs = 900;
     public const int OverlayFadeDurationMs = 300;

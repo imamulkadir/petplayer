@@ -11,6 +11,7 @@
             <SolidColorBrush x:Key="AppBackgroundBrush" Color="#0A0A0C" />
             <SolidColorBrush x:Key="SurfaceBrush" Color="#15151A" />
             <SolidColorBrush x:Key="OverlaySurfaceBrush" Color="#CC141418" />
+            <SolidColorBrush x:Key="ChromeBackgroundBrush" Color="#2B2B2B" />
             <SolidColorBrush x:Key="OverlaySurfaceLightBrush" Color="#B31C1C22" />
             <SolidColorBrush x:Key="BorderBrush" Color="#26FFFFFF" />
             <SolidColorBrush x:Key="AccentBrush" Color="#5AAAFF" />

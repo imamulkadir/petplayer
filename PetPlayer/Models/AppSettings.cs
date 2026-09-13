@@ -14,8 +14,6 @@ public sealed class AppSettings
 
     public bool IsMuted { get; set; }
 
-    public double PlaybackSpeed { get; set; } = Helpers.PlaybackConstants.DefaultPlaybackSpeed;
-
     public bool AlwaysOnTop { get; set; }
 
     public double WindowWidth { get; set; } = 1200;
@@ -43,8 +41,6 @@ public sealed class AppSettings
     public bool Autoplay { get; set; } = true;
 
     public bool AutoLoadMatchingSubtitle { get; set; } = true;
-
-    public int ControlsHideDelayMs { get; set; } = Helpers.PlaybackConstants.ControlsHideDelayMs;
 
     public bool TranscriptPanelVisible { get; set; }
 

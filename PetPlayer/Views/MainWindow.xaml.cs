@@ -19,7 +19,6 @@ namespace PetPlayer.Views;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
-    private readonly DispatcherTimer _controlsHideTimer;
     private readonly DispatcherTimer _cursorHideTimer;
     private readonly DispatcherTimer _letterboxMaskTimer;
     private WindowState _preFullscreenState = WindowState.Normal;
@@ -53,16 +52,6 @@ public partial class MainWindow : Window
         }
 
         Topmost = _viewModel.Settings.AlwaysOnTop;
-
-        _controlsHideTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(_viewModel.Settings.ControlsHideDelayMs) };
-        _controlsHideTimer.Tick += (_, _) =>
-        {
-            _controlsHideTimer.Stop();
-            if (_viewModel.IsPlaying)
-            {
-                _viewModel.IsControlsVisible = false;
-            }
-        };
 
         _cursorHideTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(PlaybackConstants.CursorHideDelayMs) };
         _cursorHideTimer.Tick += (_, _) =>
@@ -167,7 +156,13 @@ public partial class MainWindow : Window
 
             if (string.Equals(name, "static", StringComparison.OrdinalIgnoreCase))
             {
-                SetClassLongPtr(hWnd, GCLP_HBRBACKGROUND, blackBrush);
+                // This placeholder is the ONLY thing visible while idle (no media ever
+                // loaded/played) - LibVLC's own "VLC video main/output" windows only get
+                // created once playback actually starts and layer on top of it from then
+                // on, so its color never matters again after that. Painting it the chrome
+                // color (not black) is what makes the idle player area read as #2B2B2B
+                // instead of white/gray while nothing is playing.
+                SetClassLongPtr(hWnd, GCLP_HBRBACKGROUND, IdleBackgroundBrush);
                 InvalidateRect(hWnd, IntPtr.Zero, true);
             }
             else if (name.StartsWith("VLC video main", StringComparison.Ordinal)
@@ -278,8 +273,16 @@ public partial class MainWindow : Window
     [DllImport("gdi32.dll")]
     private static extern IntPtr GetStockObject(int fnObject);
 
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr CreateSolidBrush(int crColor);
+
     private const int GCLP_HBRBACKGROUND = -10;
     private const int BLACK_BRUSH = 4;
+
+    // #2B2B2B - R=G=B so byte order within the COLORREF doesn't matter. Created once
+    // and left alive for the process's lifetime (used as a permanent window class
+    // attribute, same as the stock black brush above).
+    private static readonly IntPtr IdleBackgroundBrush = CreateSolidBrush(0x2B2B2B);
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -291,8 +294,9 @@ public partial class MainWindow : Window
             case nameof(MainViewModel.IsAlwaysOnTop):
                 Topmost = _viewModel.IsAlwaysOnTop;
                 break;
-            case nameof(MainViewModel.IsControlsVisible):
-                if (_viewModel.IsControlsVisible)
+            case nameof(MainViewModel.IsTitleBarVisible):
+            case nameof(MainViewModel.IsBottomBarVisible):
+                if (_viewModel.IsTitleBarVisible || _viewModel.IsBottomBarVisible)
                 {
                     RestoreCursorIfHidden();
                 }
@@ -339,6 +343,12 @@ public partial class MainWindow : Window
             }
 
             Topmost = true;
+
+            // Hide both bars immediately on entry, no delay - HandleFullscreenBarHover
+            // takes over from here and shows either one instantly as soon as the
+            // pointer is next reported within its hover zone.
+            _viewModel.IsTitleBarVisible = false;
+            _viewModel.IsBottomBarVisible = false;
         }
         else
         {
@@ -356,6 +366,10 @@ public partial class MainWindow : Window
                 Width = _preFullscreenBounds.Width;
                 Height = _preFullscreenBounds.Height;
             }
+
+            // Normal window mode always shows both bars.
+            _viewModel.IsTitleBarVisible = true;
+            _viewModel.IsBottomBarVisible = true;
 
             RestoreCursorIfHidden();
         }
@@ -432,8 +446,36 @@ public partial class MainWindow : Window
         if (PresentationSource.FromVisual(this) is HwndSource hwndSource)
         {
             hwndSource.AddHook(WndProc);
+
+            // Eliminates the white flash otherwise visible before WPF's first composed
+            // (dark) frame paints, and again on every minimize->restore repaint: Windows
+            // erases a plain HWND with its window CLASS's background brush before
+            // anything else paints over it, and that brush defaults to white unless
+            // changed. Runs before Show() so the very first paint is already black -
+            // same technique (and same P/Invoke declarations) already used below in
+            // TryFixVideoWindowBackground for LibVLC's own child windows.
+            SetClassLongPtr(hwndSource.Handle, GCLP_HBRBACKGROUND, GetStockObject(BLACK_BRUSH));
+
+            // VideoHwndHost's own native "static" placeholder child window (see
+            // TryFixVideoWindowBackground) can only be created once this window's own
+            // HWND exists (it needs a parent to attach to), which normally only
+            // happens as part of Show()'s own internal layout pass - by which point
+            // Windows has ALREADY painted the very first frame using that child's
+            // default (white) class background, since Loaded (where the fix used to
+            // run) fires only after that pass, i.e. after the window is already
+            // visible. That's exactly why a later minimize/restore repaint looked
+            // correct while the very first launch didn't - the fix was real, just
+            // applied one frame too late. Forcing layout here - while the window is
+            // still fully invisible (ShowWindow hasn't run yet) - makes VideoHwndHost
+            // create that child window right now, so its class brush can be
+            // retargeted to the idle chrome color before a single pixel of it is
+            // ever painted, with no repaint/minimize-restore trick needed.
+            UpdateLayout();
+            TryFixVideoWindowBackground();
         }
     }
+
+    private const int WM_SIZING = 0x0214;
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
@@ -441,8 +483,41 @@ public partial class MainWindow : Window
         {
             ConstrainMaximizedSizeToWorkArea(hwnd, lParam);
         }
+        else if (msg == WM_SIZING)
+        {
+            ShowLiveResizeOverlay(lParam);
+        }
 
         return IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// WM_SIZING is sent by Windows specifically while the user is interactively
+    /// resizing (not moving) the window, repeatedly, for every edge/corner - whether
+    /// the drag started from the native WindowChrome resize border or from
+    /// TryBeginEdgeResize's own WM_NCLBUTTONDOWN handoff, both funnel into the same
+    /// OS resize loop. Reusing that as the trigger avoids having to separately guess
+    /// "is this SizeChanged from a user drag or something else" (maximize, fullscreen,
+    /// settings restore, etc. never send WM_SIZING). Shows the overlay through the
+    /// same infrastructure as every other status message, so it disappears on its own
+    /// once WM_SIZING stops arriving (resize ends) via the existing fade timeout.
+    /// </summary>
+    private void ShowLiveResizeOverlay(IntPtr lParam)
+    {
+        var source = PresentationSource.FromVisual(this);
+        if (source?.CompositionTarget is null)
+        {
+            return;
+        }
+
+        var rect = Marshal.PtrToStructure<RECT>(lParam);
+        var transform = source.CompositionTarget.TransformFromDevice;
+        var topLeft = transform.Transform(new Point(rect.Left, rect.Top));
+        var bottomRight = transform.Transform(new Point(rect.Right, rect.Bottom));
+
+        var width = (int)Math.Round(bottomRight.X - topLeft.X);
+        var height = (int)Math.Round(bottomRight.Y - topLeft.Y);
+        _viewModel.ShowSizeOverlay(width, height);
     }
 
     private static void ConstrainMaximizedSizeToWorkArea(IntPtr hwnd, IntPtr lParam)
@@ -517,28 +592,6 @@ public partial class MainWindow : Window
         {
             Cursor = Cursors.Arrow;
             _cursorHidden = false;
-        }
-    }
-
-    // ----- Single-instance activation -----
-
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr hWnd);
-
-    public void RestoreAndActivate()
-    {
-        if (WindowState == WindowState.Minimized)
-        {
-            WindowState = WindowState.Normal;
-        }
-
-        Show();
-        Activate();
-
-        var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-        if (handle != IntPtr.Zero)
-        {
-            SetForegroundWindow(handle);
         }
     }
 
@@ -626,13 +679,21 @@ public partial class MainWindow : Window
             e.Handled = true;
         }
 
+        // Deliberately does NOT touch the fullscreen bars here - per spec, fullscreen
+        // show/hide is driven exclusively by pointer proximity to the top/bottom edge
+        // (see HandleFullscreenBarHover), never by keyboard activity. NotifyUserActivity
+        // itself no-ops while fullscreen; in normal window mode the bars are always
+        // visible already, so this is otherwise harmless.
         _viewModel.NotifyUserActivity();
-        ResetControlsHideTimer();
     }
 
     // ----- Mouse / auto-hide / cursor -----
 
-    private void Window_MouseMove(object sender, MouseEventArgs e) => HandleUserMouseActivity();
+    private void Window_MouseMove(object sender, MouseEventArgs e)
+    {
+        HandleUserMouseActivity();
+        HandleFullscreenBarHover(GetWindowRelativePoint(this, e));
+    }
 
     // VideoView hosts its content in a separate floating overlay window (see
     // MainWindow.xaml), so mouse movement over the video/controls never
@@ -642,6 +703,33 @@ public partial class MainWindow : Window
     {
         HandleUserMouseActivity();
         UpdateResizeCursor(sender, e);
+        HandleFullscreenBarHover(GetWindowRelativePoint((FrameworkElement)sender, e));
+    }
+
+    private Point GetWindowRelativePoint(IInputElement relativeTo, MouseEventArgs e) =>
+        PointFromScreen(((FrameworkElement)relativeTo).PointToScreen(e.GetPosition(relativeTo)));
+
+    /// <summary>
+    /// Fullscreen-only: reveals the title bar / bottom control bar independently and
+    /// instantly based on how close the pointer currently is to the top/bottom edge,
+    /// using generous "reasonable" zones (not an exact 1px edge) rather than the exact
+    /// rendered bar height. No delay either way - each bar's visibility is just a
+    /// direct reflection of whether the pointer is currently inside its zone on this
+    /// move event, so it appears the instant the pointer enters the zone and
+    /// disappears the instant it leaves (hovering the bar itself keeps the pointer
+    /// inside its own zone the whole time it's being used). The middle of the video
+    /// deliberately does nothing here - see HandleUserMouseActivity, which no longer
+    /// force-shows the bars on generic mouse movement.
+    /// </summary>
+    private void HandleFullscreenBarHover(Point pointInWindow)
+    {
+        if (!_viewModel.IsFullscreen)
+        {
+            return;
+        }
+
+        _viewModel.IsTitleBarVisible = pointInWindow.Y <= PlaybackConstants.FullscreenTopHoverZoneDips;
+        _viewModel.IsBottomBarVisible = pointInWindow.Y >= ActualHeight - PlaybackConstants.FullscreenBottomHoverZoneDips;
     }
 
     /// <summary>
@@ -715,19 +803,18 @@ public partial class MainWindow : Window
         HandleUserMouseActivity();
     }
 
+    /// <summary>
+    /// Cursor un-hide/reset always happens on any movement (unchanged fullscreen
+    /// cursor auto-hide behavior). NotifyUserActivity is a cheap no-op in normal
+    /// window mode (bars are always visible there anyway) and, deliberately, ALSO
+    /// a no-op in fullscreen (generic movement must not reveal the bars on its own -
+    /// only proximity to an edge should, see HandleFullscreenBarHover).
+    /// </summary>
     private void HandleUserMouseActivity()
     {
-        _viewModel.NotifyUserActivity();
         RestoreCursorIfHidden();
-        ResetControlsHideTimer();
         ResetCursorHideTimer();
-    }
-
-    private void ResetControlsHideTimer()
-    {
-        _controlsHideTimer.Stop();
-        _controlsHideTimer.Interval = TimeSpan.FromMilliseconds(_viewModel.Settings.ControlsHideDelayMs);
-        _controlsHideTimer.Start();
+        _viewModel.NotifyUserActivity();
     }
 
     private void ResetCursorHideTimer()

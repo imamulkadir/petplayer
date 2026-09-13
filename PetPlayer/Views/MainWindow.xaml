@@ -99,6 +99,37 @@
                         </ContextMenu>
                     </Grid.ContextMenu>
 
+                    <!--
+                        Idle-state background. LibVLC's video output attaches its own
+                        Direct3D11 render target to this surface as soon as MediaPlayer is
+                        assigned (see MainWindow constructor) - well before any media is ever
+                        loaded - and that render target's own clear color (a flat light gray in
+                        this LibVLC build; see the comment on the letterbox masks below) paints
+                        straight through, entirely bypassing GDI, so no class-background/brush
+                        trick from code-behind can reach it reliably (that's exactly why it
+                        looked "fixed" only after a minimize/restore happened to catch it at a
+                        different point in that surface's own lifecycle, not because the fix
+                        actually took hold). This Border instead relies on the one thing that's
+                        guaranteed to paint above the native surface regardless of any of
+                        that: WPF's own compositing of VideoView's overlay content (the same
+                        mechanism that already puts the placeholder text and letterbox bars
+                        above the video). A fully opaque #2B2B2B fill here, shown only while no
+                        media is loaded, hides the native surface's own color completely - no
+                        race, no timing dependency on Loaded/SizeChanged/StateChanged.
+                    -->
+                    <Border Background="{StaticResource ChromeBackgroundBrush}" IsHitTestVisible="False">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasMedia}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                    </Border>
+
                     <!-- Placeholder hint shown until a video is opened -->
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                         <StackPanel.Style>
@@ -138,10 +169,12 @@
                     <Border x:Name="LetterboxMaskRight" Background="Black" HorizontalAlignment="Right" Width="0" IsHitTestVisible="False" />
 
                     <!-- Top title bar: player logo + currently-playing file name on the left,
-                         window chrome buttons on the right. Visible on hover, hidden the rest
-                         of the time (same IsControlsVisible binding as the bottom control bar). -->
-                    <Border HorizontalAlignment="Stretch" VerticalAlignment="Top" Background="{StaticResource OverlaySurfaceBrush}"
-                            Visibility="{Binding IsControlsVisible, Converter={StaticResource BoolToVis}}"
+                         window chrome buttons on the right. Always visible in normal window
+                         mode; in fullscreen it hides after a delay and reappears when the
+                         pointer nears the top edge (see IsTitleBarVisible / HandleFullscreenBarHover
+                         in MainWindow.xaml.cs). -->
+                    <Border HorizontalAlignment="Stretch" VerticalAlignment="Top" Background="{StaticResource ChromeBackgroundBrush}"
+                            Visibility="{Binding IsTitleBarVisible, Converter={StaticResource BoolToVis}}"
                             MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -166,7 +199,7 @@
                     </Border>
 
                     <!-- On-screen feedback overlay (volume/seek/speed/subtitle toggle, etc.) -->
-                    <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16,0,0,72" Background="{StaticResource OverlaySurfaceBrush}"
+                    <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="20,44,0,0" Background="Transparent"
                             CornerRadius="4" Padding="10,5" Opacity="0" IsHitTestVisible="False">
                         <Border.Style>
                             <Style TargetType="Border">
@@ -191,12 +224,12 @@
                                 </Style.Triggers>
                             </Style>
                         </Border.Style>
-                        <TextBlock Text="{Binding OverlayText}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding OverlayText}" Foreground="{StaticResource AccentBrush}" FontSize="13" FontWeight="SemiBold" />
                     </Border>
 
                     <!-- Bottom translucent control bar -->
-                    <Border VerticalAlignment="Bottom" Background="{StaticResource OverlaySurfaceBrush}"
-                            Visibility="{Binding IsControlsVisible, Converter={StaticResource BoolToVis}}">
+                    <Border VerticalAlignment="Bottom" Background="{StaticResource ChromeBackgroundBrush}"
+                            Visibility="{Binding IsBottomBarVisible, Converter={StaticResource BoolToVis}}">
                         <Border.Style>
                             <Style TargetType="Border">
                                 <Style.Triggers>

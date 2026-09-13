@@ -19,19 +19,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private int _volumeStepPercent;
     [ObservableProperty] private bool _autoplay;
     [ObservableProperty] private bool _autoLoadMatchingSubtitle;
-    [ObservableProperty] private int _controlsHideDelayMs;
     [ObservableProperty] private bool _resumePlaybackEnabled;
-
-    /// <summary>Settings window shows the hide delay in seconds; persisted storage stays in ms.</summary>
-    public int ControlsHideDelaySeconds
-    {
-        get => ControlsHideDelayMs / 1000;
-        set
-        {
-            ControlsHideDelayMs = Math.Max(1, value) * 1000;
-            OnPropertyChanged();
-        }
-    }
 
     [ObservableProperty] private int _subtitleFontSize;
     [ObservableProperty] private double _subtitleVerticalPosition;
@@ -62,7 +50,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         _volumeStepPercent = settings.VolumeStepPercent;
         _autoplay = settings.Autoplay;
         _autoLoadMatchingSubtitle = settings.AutoLoadMatchingSubtitle;
-        _controlsHideDelayMs = settings.ControlsHideDelayMs;
         _resumePlaybackEnabled = settings.ResumePlaybackEnabled;
 
         _subtitleFontSize = settings.SubtitleFontSize;
@@ -103,7 +90,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         _settings.VolumeStepPercent = Math.Clamp(VolumeStepPercent, 1, 50);
         _settings.Autoplay = Autoplay;
         _settings.AutoLoadMatchingSubtitle = AutoLoadMatchingSubtitle;
-        _settings.ControlsHideDelayMs = Math.Max(500, ControlsHideDelayMs);
         _settings.ResumePlaybackEnabled = ResumePlaybackEnabled;
 
         _settings.SubtitleFontSize = Math.Clamp(SubtitleFontSize, 10, 72);
